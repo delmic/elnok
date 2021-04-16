@@ -26,16 +26,16 @@ ELnoK. If not, see http://www.gnu.org/licenses/.
 # -S, --since=, -U, --until=
 
 import argparse
+from collections import OrderedDict
 from datetime import datetime
 import logging
 import requests
 import sys
 import time
-from typing import Iterator
+from typing import Iterator, Optional
 
 import elnok
 
-from collections import OrderedDict
 
 # Elasticsearch API described here:
 # https://www.elastic.co/guide/en/elasticsearch/reference/current/search-search.html
@@ -85,28 +85,11 @@ OUTPUT = ["level", "module", "component", "subcomponent", "line", "message"]
 HOST = "localhost:9200"  # Hard-coded for now
 
 # SEARCH_URL =  "http://{host}/{target}/_search?"
-SEARCH_URL = "http://{host}/{target}/_search?pretty"  # for debug
 SEARCH_MULTI_URL = "http://{host}/_search"
 PIT_URL = "http://{host}/{target}/_pit" 
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S.%f"
 OUTPUT_FMT = "{@timestamp}\t{level}\t{module}\t{component}\t{subcomponent}:{line}\t{message}"
-
-
-# def es_search(host: str, target: str, search: str=None) -> Iterator[str]:
-    # # TODO: add _source in query, to limit the fields returned
-    # # TODO: use "size" to have a longer query
-    # # TODO: to scroll through a large answer, use search_after, with pit and scrolls
-    # # https://www.elastic.co/guide/en/elasticsearch/reference/current/paginate-search-results.html#search-after
-    #
-    # url = SEARCH_URL.format(host=host, target=target)
-    # req_data = {
-        # "sort": [{"@timestamp": "asc"}],
-    # }
-    # response = requests.get(url, json=req_data)
-    # # Use OrderedDict in order to keep the order
-    # for h in response.json(object_pairs_hook=OrderedDict)["hits"]["hits"]:
-        # yield h
 
 
 def es_get_pit(host:str, target: str, keep_alive:float=60) -> dict:
@@ -120,14 +103,20 @@ def es_get_pit(host:str, target: str, keep_alive:float=60) -> dict:
     return response.json()["id"]
 
 
-def es_search(host: str, target: str, search: str=None) -> Iterator[dict]:
+def es_search(host: str, target: str, match: Optional[str]=None, since: Optional[str]=None, until: Optional[str]=None) -> Iterator[dict]:
     """
     Does a elasticsearch query, by returning each hit one at a time via an iterator
+    match: a string defining a filter on what to return. It should be a JSON representation
+      of the ElasticSearch "match" query. See:
+      https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-match-query.html
+    since: filter for the minimum time
+    until: filter for the maximum time. For the format. See:
+      https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-range-query.html#range-query-notes
     yield: dict (str -> value): each result (hit) found, in time ascending order
     """
     # TODO: add _source in query, to limit the fields returned
     # We don't receive a single "endless" response. Instead, we start a search,
-    # and then "scroll" through it, by asking for more results.
+    # and then "scroll" through it, by asking for more results. See:
     # https://www.elastic.co/guide/en/elasticsearch/reference/current/paginate-search-results.html
     
     # Get a "Point-in-time" (PIT), which is a sort of pointer to a snapshot of
@@ -147,10 +136,24 @@ def es_search(host: str, target: str, search: str=None) -> Iterator[dict]:
                     "keep_alive": "10s",  # Extend the PIT duration
             },
         }
+        # Add a time range, if requested. See:
+        # https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-range-query.html
+        if since:
+            q = req_data.setdefault("query", {})
+            q_time = q.setdefault("range", {}).setdefault("@timestamp", {})
+            q_time["gte"] = since
+        if until:
+            q = req_data.setdefault("query", {})
+            q_time = q.setdefault("range", {}).setdefault("@timestamp", {})
+            q_time["lte"] = until
+
+        # TODO: report properly if the date format is incorrect (ie, not understood by ES
+
         # Pass info from the previous request (if it's not the first one)
         if hits is not None:
             req_data["search_after"] = hits[-1]["sort"]
 
+        logging.debug(req_data)
         response = requests.get(url, json=req_data)
         logging.debug(response.text)
 
@@ -172,7 +175,12 @@ def print_hit(hit: dict):
     ts = datetime.strptime(source["@timestamp"], "%Y-%m-%dT%H:%M:%S.%fZ")
     source["@timestamp"] = ts.strftime(TIME_FMT)
 
-    print(OUTPUT_FMT.format(**source))
+    # TODO: handle better if a field is missing (than KeyError)
+    try:
+        print(OUTPUT_FMT.format(**source))
+    except KeyError:
+        logging.exception("Failed to print %s", source)
+        raise
     
 
 def main(args: list) -> int:
@@ -183,6 +191,10 @@ def main(args: list) -> int:
                         help="show program's version number and exit")
     parser.add_argument("--log-level", dest="loglev", metavar="<level>", type=int, choices=[0, 1, 2],
                          default=0, help="set verbosity level (0-2, default = 0)")
+    parser.add_argument("--since", "-S", dest="since",
+                        help="Show entries on or newer than the given date. Format is 2012-10-30 18:17:16 or now-2d.")
+    parser.add_argument("--until", "-U", dest="until",
+                        help="Show entries on or before the given date. Format is 2012-10-30 18:17:16 or now.")
 
     options = parser.parse_args(args[1:])
 
@@ -200,7 +212,7 @@ def main(args: list) -> int:
     # change the log format to be more descriptive
     logging.basicConfig(level=loglev, format='%(asctime)s (%(module)s) %(levelname)s: %(message)s')
 
-    for hit in es_search(HOST, TARGET):
+    for hit in es_search(HOST, TARGET, since=options.since, until=options.until):
         print_hit(hit)
 
 
