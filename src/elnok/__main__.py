@@ -26,55 +26,13 @@ ELnoK. If not, see http://www.gnu.org/licenses/.
 # -S, --since=, -U, --until=
 
 import argparse
-from collections import OrderedDict
-from datetime import datetime
 import logging
-import requests
 import sys
-import time
-from typing import Iterator, Optional
 
+from elnok import es, output
 import elnok
 
 
-# Elasticsearch API described here:
-# https://www.elastic.co/guide/en/elasticsearch/reference/current/search-search.html
-# Example call
-#curl -X GET "localhost:9200/logstash-*/_search?pretty" -H 'Content-Type: application/json' -d'
-#                                 {
-#                                   "query": {
-#                                     "match_all": {}
-#                                   }
-#                                 }
-#                                 '
-#Example output
-#{
-# :
-#  "hits" : {
-# :
-#    "hits" : [
-#      {
-#        "_index" : "logstash-2021.04.12-000001",
-#        "_type" : "_doc",
-#        "_id" : "XlzGxngBpKXm13z6qcO-",
-#        "_score" : 1.0,
-#        "_source" : {
-#          "message" : "SIM: parsing *ESR?",
-#          "component" : "odemis",
-#          "module" : "WCPCM",
-#          "level" : "DEBUG",
-#          "host" : "ericaspire",
-#          "timestamp" : "2021-04-12 14:57:46,306",
-#          "subcomponent" : "lakeshore",
-#          "path" : "/var/log/odemis.log",
-#          "@timestamp" : "2021-04-12T12:57:46.306Z",
-#          "@version" : "1",
-#          "line" : "494",
-#          "raw_message" : "2021-04-12 14:57:46,306\tDEBUG\tlakeshore:494:\tSIM: parsing *ESR?"
-#        }
-#      },
-#  :
-#}
 # Comma-separated list of data streams, indices, and index aliases
 TARGET="logstash-*"  # Hardcoded for now
 
@@ -84,104 +42,7 @@ OUTPUT = ["level", "module", "component", "subcomponent", "line", "message"]
 
 HOST = "localhost:9200"  # Hard-coded for now
 
-# SEARCH_URL =  "http://{host}/{target}/_search?"
-SEARCH_MULTI_URL = "http://{host}/_search"
-PIT_URL = "http://{host}/{target}/_pit" 
 
-TIME_FMT = "%Y-%m-%d %H:%M:%S.%f"
-OUTPUT_FMT = "{@timestamp}\t{level}\t{module}\t{component}\t{subcomponent}:{line}\t{message}"
-
-
-def es_get_pit(host:str, target: str, keep_alive:float=60) -> dict:
-    """
-    keep_alive: how long the PIT should be valid (s)
-    """
-
-    url = PIT_URL.format(host=host, target=target)
-    response = requests.post(url, params={"keep_alive": "%ds" % keep_alive})
-    logging.debug(response.text)
-    return response.json()["id"]
-
-
-def es_search(host: str, target: str, match: Optional[str]=None, since: Optional[str]=None, until: Optional[str]=None) -> Iterator[dict]:
-    """
-    Does a elasticsearch query, by returning each hit one at a time via an iterator
-    match: a string defining a filter on what to return. It should be a JSON representation
-      of the ElasticSearch "match" query. See:
-      https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-match-query.html
-    since: filter for the minimum time
-    until: filter for the maximum time. For the format. See:
-      https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-range-query.html#range-query-notes
-    yield: dict (str -> value): each result (hit) found, in time ascending order
-    """
-    # TODO: add _source in query, to limit the fields returned
-    # We don't receive a single "endless" response. Instead, we start a search,
-    # and then "scroll" through it, by asking for more results. See:
-    # https://www.elastic.co/guide/en/elasticsearch/reference/current/paginate-search-results.html
-    
-    # Get a "Point-in-time" (PIT), which is a sort of pointer to a snapshot of
-    # the log, so that even if data changes, the paginated results don't change.
-    pit = es_get_pit(host, target, keep_alive=10)
-
-    # Keep requesting small amounts of data
-    hits = None
-    while True:
-        url = SEARCH_MULTI_URL.format(host=host, target=target)
-        req_data = {
-            # Can be up to 10000. Any number "works", but too small cause a lot
-            # of overhead, and too big causes latency.
-            "size": 100,
-            "sort": [{"@timestamp": "asc"}],
-            "pit": {"id": pit,
-                    "keep_alive": "10s",  # Extend the PIT duration
-            },
-        }
-        # Add a time range, if requested. See:
-        # https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-range-query.html
-        if since:
-            q = req_data.setdefault("query", {})
-            q_time = q.setdefault("range", {}).setdefault("@timestamp", {})
-            q_time["gte"] = since
-        if until:
-            q = req_data.setdefault("query", {})
-            q_time = q.setdefault("range", {}).setdefault("@timestamp", {})
-            q_time["lte"] = until
-
-        # TODO: report properly if the date format is incorrect (ie, not understood by ES
-
-        # Pass info from the previous request (if it's not the first one)
-        if hits is not None:
-            req_data["search_after"] = hits[-1]["sort"]
-
-        logging.debug(req_data)
-        response = requests.get(url, json=req_data)
-        logging.debug(response.text)
-
-        # Use OrderedDict in order to keep the order
-        hits = response.json(object_pairs_hook=OrderedDict)["hits"]["hits"]
-        if not hits:  # End of the search?
-            return
-
-        # Pass one each log line, one at a time
-        for h in hits:
-            yield h
-
-
-def print_hit(hit: dict):
-    source = hit["_source"]
-
-    # Convert from timestamp -> epoch, and put it back into the user's format
-    # example @timestamp: "2021-04-12T12:58:07.926Z"
-    ts = datetime.strptime(source["@timestamp"], "%Y-%m-%dT%H:%M:%S.%fZ")
-    source["@timestamp"] = ts.strftime(TIME_FMT)
-
-    # TODO: handle better if a field is missing (than KeyError)
-    try:
-        print(OUTPUT_FMT.format(**source))
-    except KeyError:
-        logging.exception("Failed to print %s", source)
-        raise
-    
 
 def main(args: list) -> int:
     # arguments handling
@@ -194,7 +55,9 @@ def main(args: list) -> int:
     parser.add_argument("--since", "-S", dest="since",
                         help="Show entries on or newer than the given date. Format is 2012-10-30 18:17:16 or now-2d.")
     parser.add_argument("--until", "-U", dest="until",
-                        help="Show entries on or before the given date. Format is 2012-10-30 18:17:16 or now.")
+                        help="Show entries on or before the given date. Format is 2012-10-30 18:17:16 or now-1h.")
+    parser.add_argument("match", nargs="*",
+                        help="Filter the output to only the fields that match")
 
     options = parser.parse_args(args[1:])
 
@@ -212,9 +75,15 @@ def main(args: list) -> int:
     # change the log format to be more descriptive
     logging.basicConfig(level=loglev, format='%(asctime)s (%(module)s) %(levelname)s: %(message)s')
 
-    for hit in es_search(HOST, TARGET, since=options.since, until=options.until):
-        print_hit(hit)
+    # Convert matches from field=value to a dict field -> value
+    matches = {}
+    for m in options.match:
+        field, value = m.split("=")
+        # TODO: support multiple times the same field (as a OR)
+        matches[field] = value
 
+    for hit in es.search(HOST, TARGET, match=matches, since=options.since, until=options.until):
+        output.print_hit(hit)
 
     return 0
 
