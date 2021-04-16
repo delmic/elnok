@@ -26,15 +26,19 @@ ELnoK. If not, see http://www.gnu.org/licenses/.
 # -S, --since=, -U, --until=
 
 import argparse
+from datetime import datetime
 import logging
+import requests
 import sys
 import time
-import requests
+from typing import Iterator
+
 import elnok
+
+from collections import OrderedDict
 
 # Elasticsearch API described here:
 # https://www.elastic.co/guide/en/elasticsearch/reference/current/search-search.html
-
 # Example call
 #curl -X GET "localhost:9200/logstash-*/_search?pretty" -H 'Content-Type: application/json' -d'
 #                                 {
@@ -43,7 +47,6 @@ import elnok
 #                                   }
 #                                 }
 #                                 '
-
 #Example output
 #{
 # :
@@ -72,7 +75,6 @@ import elnok
 #      },
 #  :
 #}
-
 # Comma-separated list of data streams, indices, and index aliases
 TARGET="logstash-*"  # Hardcoded for now
 
@@ -82,22 +84,37 @@ OUTPUT = ["level", "module", "component", "subcomponent", "line", "message"]
 
 HOST = "localhost:9200"  # Hard-coded for now
 
-SEARCH_URL =  "http://{host}/{target}/_search?pretty"
+# SEARCH_URL =  "http://{host}/{target}/_search?"
+SEARCH_URL = "http://{host}/{target}/_search?pretty"  # for debug
+
+TIME_FMT = "%Y-%m-%d %H:%M:%S.%f"
+OUTPUT_FMT = "{@timestamp}\t{level}\t{module}\t{component}\t{subcomponent}:{line}\t{message}"
 
 
-def es_search(host: str, target: str, search: str = None) -> str:
-    # TODO: make it an iterator
+def es_search(host: str, target: str, search: str=None) -> Iterator[str]:
     # TODO: add _source in query, to limit the fields returned
-    # TODO: use "size" to have a longer query, and search_after to get even more
+    # TODO: use "size" to have a longer query
+    # TODO: to scroll through a large answer, use search_after, with pit and scrolls
+    # https://www.elastic.co/guide/en/elasticsearch/reference/current/paginate-search-results.html#search-after
     
     url = SEARCH_URL.format(host=host, target=target)
-    response = requests.get(url)
-    return response.json()["hits"]["hits"]
+    req_data = {
+        "sort": [{"@timestamp": "asc"}],
+    }
+    response = requests.get(url, json=req_data)
+    # Use OrderedDict in order to keep the order
+    for h in response.json(object_pairs_hook=OrderedDict)["hits"]["hits"]:
+        yield h
 
-OUTPUT_FMT = "{@timestamp}\t{level}\t{module}\t{component}\t{subcomponent}:{line}\t{message}"
+
 def print_hit(hit: dict):
     source = hit["_source"]
-#    print(source)
+
+    # Convert from timestamp -> epoch, and put it back into the user's format
+    # example @timestamp: "2021-04-12T12:58:07.926Z"
+    ts = datetime.strptime(source["@timestamp"], "%Y-%m-%dT%H:%M:%S.%fZ")
+    source["@timestamp"] = ts.strftime(TIME_FMT)
+
     print(OUTPUT_FMT.format(**source))
     
 
@@ -126,8 +143,7 @@ def main(args: list) -> int:
     # change the log format to be more descriptive
     logging.basicConfig(level=loglev, format='%(asctime)s (%(module)s) %(levelname)s: %(message)s')
 
-    hits = es_search(HOST, TARGET)
-    for hit in hits:
+    for hit in es_search(HOST, TARGET):
         print_hit(hit)
 
 
