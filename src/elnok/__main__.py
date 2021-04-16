@@ -86,25 +86,82 @@ HOST = "localhost:9200"  # Hard-coded for now
 
 # SEARCH_URL =  "http://{host}/{target}/_search?"
 SEARCH_URL = "http://{host}/{target}/_search?pretty"  # for debug
+SEARCH_MULTI_URL = "http://{host}/_search"
+PIT_URL = "http://{host}/{target}/_pit" 
 
 TIME_FMT = "%Y-%m-%d %H:%M:%S.%f"
 OUTPUT_FMT = "{@timestamp}\t{level}\t{module}\t{component}\t{subcomponent}:{line}\t{message}"
 
 
-def es_search(host: str, target: str, search: str=None) -> Iterator[str]:
+# def es_search(host: str, target: str, search: str=None) -> Iterator[str]:
+    # # TODO: add _source in query, to limit the fields returned
+    # # TODO: use "size" to have a longer query
+    # # TODO: to scroll through a large answer, use search_after, with pit and scrolls
+    # # https://www.elastic.co/guide/en/elasticsearch/reference/current/paginate-search-results.html#search-after
+    #
+    # url = SEARCH_URL.format(host=host, target=target)
+    # req_data = {
+        # "sort": [{"@timestamp": "asc"}],
+    # }
+    # response = requests.get(url, json=req_data)
+    # # Use OrderedDict in order to keep the order
+    # for h in response.json(object_pairs_hook=OrderedDict)["hits"]["hits"]:
+        # yield h
+
+
+def es_get_pit(host:str, target: str, keep_alive:float=60) -> dict:
+    """
+    keep_alive: how long the PIT should be valid (s)
+    """
+
+    url = PIT_URL.format(host=host, target=target)
+    response = requests.post(url, params={"keep_alive": "%ds" % keep_alive})
+    logging.debug(response.text)
+    return response.json()["id"]
+
+
+def es_search(host: str, target: str, search: str=None) -> Iterator[dict]:
+    """
+    Does a elasticsearch query, by returning each hit one at a time via an iterator
+    yield: dict (str -> value): each result (hit) found, in time ascending order
+    """
     # TODO: add _source in query, to limit the fields returned
-    # TODO: use "size" to have a longer query
-    # TODO: to scroll through a large answer, use search_after, with pit and scrolls
-    # https://www.elastic.co/guide/en/elasticsearch/reference/current/paginate-search-results.html#search-after
+    # We don't receive a single "endless" response. Instead, we start a search,
+    # and then "scroll" through it, by asking for more results.
+    # https://www.elastic.co/guide/en/elasticsearch/reference/current/paginate-search-results.html
     
-    url = SEARCH_URL.format(host=host, target=target)
-    req_data = {
-        "sort": [{"@timestamp": "asc"}],
-    }
-    response = requests.get(url, json=req_data)
-    # Use OrderedDict in order to keep the order
-    for h in response.json(object_pairs_hook=OrderedDict)["hits"]["hits"]:
-        yield h
+    # Get a "Point-in-time" (PIT), which is a sort of pointer to a snapshot of
+    # the log, so that even if data changes, the paginated results don't change.
+    pit = es_get_pit(host, target, keep_alive=10)
+
+    # Keep requesting small amounts of data
+    hits = None
+    while True:
+        url = SEARCH_MULTI_URL.format(host=host, target=target)
+        req_data = {
+            # Can be up to 10000. Any number "works", but too small cause a lot
+            # of overhead, and too big causes latency.
+            "size": 100,
+            "sort": [{"@timestamp": "asc"}],
+            "pit": {"id": pit,
+                    "keep_alive": "10s",  # Extend the PIT duration
+            },
+        }
+        # Pass info from the previous request (if it's not the first one)
+        if hits is not None:
+            req_data["search_after"] = hits[-1]["sort"]
+
+        response = requests.get(url, json=req_data)
+        logging.debug(response.text)
+
+        # Use OrderedDict in order to keep the order
+        hits = response.json(object_pairs_hook=OrderedDict)["hits"]["hits"]
+        if not hits:  # End of the search?
+            return
+
+        # Pass one each log line, one at a time
+        for h in hits:
+            yield h
 
 
 def print_hit(hit: dict):
