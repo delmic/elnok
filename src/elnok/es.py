@@ -88,7 +88,7 @@ def search(host: str, target: str, match: Optional[Dict[str, str]]=None,
       https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-match-query.html
     since: filter for the minimum time
     until: filter for the maximum time. For the format. See:
-      https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-range-query.html#range-query-notes
+      https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregations-bucket-daterange-aggregation.html
     yield: dict (str -> value): each result (hit) found, in time ascending order
     """
     # TODO: add _source in query, to limit the fields returned

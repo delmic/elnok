@@ -36,27 +36,27 @@ import elnok
 # Comma-separated list of data streams, indices, and index aliases
 TARGET="logstash-*"  # Hardcoded for now
 
-# List of fields to show in the output, hard-coded for now
-# No need to indicate the @timestamp, it's handled by default
-OUTPUT = ["level", "module", "component", "subcomponent", "line", "message"]
-
 HOST = "localhost:9200"  # Hard-coded for now
 
 
 
 def main(args: list) -> int:
     # arguments handling
-    parser = argparse.ArgumentParser(description="Elasticsearch/Logstash simple log displayer")
+    parser = argparse.ArgumentParser(description="A light front-end to Logstash/Elasticsearch")
 
     parser.add_argument('--version', dest="version", action='store_true',
-                        help="show program's version number and exit")
+                        help="Show program's version number and exit")
     parser.add_argument("--log-level", dest="loglev", metavar="<level>", type=int, choices=[0, 1, 2],
-                         default=0, help="set verbosity level (0-2, default = 0)")
+                        default=0, help="Set verbosity level (0-2, default = 0)")
+    parser.add_argument("--host", default="localhost:9200",
+                        help="Specify the name or IP address and port of the elasticsearch server (default is localhost:9200)")
+    parser.add_argument("--index", default="logstash-*",
+                        help="Specify the index pattern to look into (default is logstash-*)")
     parser.add_argument("--since", "-S", dest="since",
                         help="Show entries on or newer than the given date. Format is 2012-10-30 18:17:16 or now-2d.")
     parser.add_argument("--until", "-U", dest="until",
                         help="Show entries on or before the given date. Format is 2012-10-30 18:17:16 or now-1h.")
-    parser.add_argument("match", nargs="*",
+    parser.add_argument("matches", nargs="*",
                         help="Filter the output to only the fields that match")
 
     options = parser.parse_args(args[1:])
@@ -77,12 +77,14 @@ def main(args: list) -> int:
 
     # Convert matches from field=value to a dict field -> value
     matches = {}
-    for m in options.match:
+    for m in options.matches:
         field, value = m.split("=")
         # TODO: support multiple times the same field (as a OR)
+        if field in matches:
+            raise ValueError("Cannot pass multiple matches on the same field (%s)" % (field,))
         matches[field] = value
 
-    for hit in es.search(HOST, TARGET, match=matches, since=options.since, until=options.until):
+    for hit in es.search(options.host, options.index, match=matches, since=options.since, until=options.until):
         output.print_hit(hit)
 
     return 0
