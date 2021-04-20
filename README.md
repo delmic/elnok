@@ -49,9 +49,10 @@ passed. In the case different fields are passed, all the matches will have to ma
 
 * --log-level <level>
 
-    Set verbosity level (0-2, default = 0). 0 only shows warning and errors.
+    Set verbosity level (0-3, default = 0) of the elnok internals. 0 only shows errors.
     A higher number shows more information about the program's behaviour.
-    Everything is logged on the error output.
+    Everything is logged on the error output. Unless you're debugging an issue
+    with elnok, you probably want to leave it to the minimum.
 
 * --host HOST
 
@@ -60,6 +61,21 @@ passed. In the case different fields are passed, all the matches will have to ma
 * --index INDEX
 
     Specify the index pattern to look into (default is logstash-*). It can be comma separated.
+
+* -o, --output OUTPUT
+
+    Controls the format of the generated output. Accepts "short" or "json".
+    The default is "short", which outputs each log on a line, tab/semicolon separated.
+    "json" shows each log line as a raw Elasticsearch hit
+
+* --output-fields FIELDS
+
+    List of the fields to be printed (comma/semicolon separated).
+    On "json" output, by default all the fields are shown. On "short", the default
+    is  "@timestamp,level,module,component,subcomponent:line,message". Commas are
+    replaced by tabs, and semicolons stay as is.
+    The fields available depend on the logstash storage. To find out the available ones,
+    use the json output, with the default behaviour.
 
 * -S, --since SINCE, -U, --until UNTIL
 
@@ -86,3 +102,10 @@ Shows all log of the last 60 minutes with the ERROR level:
 
         elnok -S now-1h level=ERROR
 
+Shows only the log where the field "subcomponent" is "img", and output a very short display:
+
+        elnok -S now-5d -U now --output-fields @timestamp,level,message subcomponent=img
+
+Shows the latest minutes logs in raw JSON format:
+
+        elnok -S now-1m --output json

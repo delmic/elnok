@@ -22,7 +22,7 @@ ELnoK. If not, see http://www.gnu.org/licenses/.
 from collections import OrderedDict
 import logging
 import requests
-from typing import Optional, Iterator, Dict
+from typing import Optional, Iterator, Dict, List, Set
 
 # Elasticsearch API described here:
 # https://www.elastic.co/guide/en/elasticsearch/reference/current/search-search.html
@@ -80,6 +80,7 @@ def get_pit(host:str, target: str, keep_alive:float=60) -> dict:
 
 def search(host: str, target: str, match: Optional[Dict[str, str]]=None,
               since: Optional[str]=None, until: Optional[str]=None,
+              fields: Optional[Set[str]]=None
               ) -> Iterator[dict]:
     """
     Does a elasticsearch query, by returning each hit one at a time via an iterator
@@ -89,6 +90,7 @@ def search(host: str, target: str, match: Optional[Dict[str, str]]=None,
     since: filter for the minimum time
     until: filter for the maximum time. For the format. See:
       https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregations-bucket-daterange-aggregation.html
+    fields: restrict the fields to return in the hit
     yield: dict (str -> value): each result (hit) found, in time ascending order
     """
     # TODO: add _source in query, to limit the fields returned
@@ -148,7 +150,10 @@ def search(host: str, target: str, match: Optional[Dict[str, str]]=None,
         if q_time:
             q_filters.append({"range": {"@timestamp": q_time}})
 
-        # TODO: report properly if the date format is incorrect (ie, not understood by ES
+        # TODO: report properly if the date format is incorrect (ie, not understood by ES)
+
+        if fields is not None:
+            req_data["_source"] = list(fields)
 
         # Pass info from the previous request (if it's not the first one)
         if hits is not None:

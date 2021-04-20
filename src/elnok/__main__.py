@@ -21,23 +21,18 @@ ELnoK. If not, see http://www.gnu.org/licenses/.
 '''
 
 # Syntax is inspired by journalctl.
-# Call like:
+# Call like :
 # elnok [OPTIONS...] [MATCHES...]
 # -S, --since=, -U, --until=
 
 import argparse
-import logging
-import sys
-
 from elnok import es, output
 import elnok
+import logging
+import re
+import sys
 
-
-# Comma-separated list of data streams, indices, and index aliases
-TARGET="logstash-*"  # Hardcoded for now
-
-HOST = "localhost:9200"  # Hard-coded for now
-
+DEFAULT_OUTPUT_SHORT = "@timestamp,level,module,component,subcomponent:line,message"
 
 
 def main(args: list) -> int:
@@ -46,12 +41,18 @@ def main(args: list) -> int:
 
     parser.add_argument('--version', dest="version", action='store_true',
                         help="Show program's version number and exit")
-    parser.add_argument("--log-level", dest="loglev", metavar="<level>", type=int, choices=[0, 1, 2],
-                        default=0, help="Set verbosity level (0-2, default = 0)")
+    parser.add_argument("--log-level", dest="loglev", metavar="<level>", type=int, choices=[0, 1, 2, 3],
+                        default=0, help="Set verbosity level (0-3, default = 0) of the elnok internals")
     parser.add_argument("--host", default="localhost:9200",
                         help="Specify the name or IP address and port of the elasticsearch server (default is localhost:9200)")
     parser.add_argument("--index", default="logstash-*",
-                        help="Specify the index pattern to look into (default is logstash-*)")
+                        help="Specify the index pattern to look into (default is logstash-*). It can be comma separated.")
+    parser.add_argument("--output", "-o", dest="output", default="short", choices=["short", "json"],
+                        help="Controls the format of the generated output.\n "
+                        "Default is short, which outputs each log on a line, tab/semicolon separated.\n "
+                        "json shows each log line as a raw elasticsearch hit")
+    parser.add_argument("--output-fields", dest="fields",
+                        help="List of the fields to be printed (comma/semicolon separated)")
     parser.add_argument("--since", "-S", dest="since",
                         help="Show entries on or newer than the given date. Format is 2012-10-30 18:17:16 or now-2d.")
     parser.add_argument("--until", "-U", dest="until",
@@ -69,23 +70,69 @@ def main(args: list) -> int:
         return 0
 
     # Set up logging before everything else
-    loglev_names = [logging.WARNING, logging.INFO, logging.DEBUG]
+    loglev_names = [logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG]
     loglev = loglev_names[options.loglev]
 
     # change the log format to be more descriptive
     logging.basicConfig(level=loglev, format='%(asctime)s (%(module)s) %(levelname)s: %(message)s')
 
-    # Convert matches from field=value to a dict field -> value
-    matches = {}
-    for m in options.matches:
-        field, value = m.split("=")
-        # TODO: support multiple times the same field (as a OR)
-        if field in matches:
-            raise ValueError("Cannot pass multiple matches on the same field (%s)" % (field,))
-        matches[field] = value
+    try:
+        # Convert matches from field=value to a dict field -> value
+        matches = {}
+        for m in options.matches:
+            field, value = m.split("=")
+            # TODO: support multiple times the same field (as a OR)
+            if field in matches:
+                raise ValueError("Cannot pass multiple matches on the same field (%s)" % (field,))
+            matches[field] = value
 
-    for hit in es.search(options.host, options.index, match=matches, since=options.since, until=options.until):
-        output.print_hit(hit)
+        # Create the set of fields to retrieve
+        if options.fields is None:
+            # Pick different default fields based on output format
+            if options.output == "short":
+                options.fields = DEFAULT_OUTPUT_SHORT
+            # For "json", we leave "None", which means all the fields
+
+        fields = None  # all
+        if options.fields:
+            fields = set(f for f in re.split("[,:]", options.fields) if f)
+
+        logging.debug("Selected fields are: %s", fields)
+
+        # Create the formatting of the output, from the fields
+        fields_fmt = None
+        if options.fields:
+            fields_fmt = []
+            # Replace , -> \t and : stays :.
+            # Each field is surrounded by {}.
+            for m in re.finditer("[,:]+|[^,:]+", options.fields):
+                p = m.group(0)
+                # p is either a series of ,:, or a field name
+                if not p:  # This shouldn't happen
+                    logging.warning("Empty token %s", m)
+                elif p[0] == ",":
+                    fields_fmt.append("\t")
+                elif p[0] == ":":
+                    fields_fmt.append(":")
+                else:
+                    fields_fmt.append("{%s}" % (p,))
+
+            fields_fmt = "".join(fields_fmt)
+
+        logging.debug("Field format: %s", fields_fmt)
+
+        if options.output == "short":
+            print_output = output.print_hit
+        elif options.output == "json":
+            print_output = output.print_json_raw
+        else:
+            raise ValueError("Unknown output %s" % options.output)
+
+        for hit in es.search(options.host, options.index, match=matches, since=options.since, until=options.until, fields=fields):
+            print_output(hit, fields_fmt)
+    except Exception:
+        logging.exception("Failure during execution")
+        return 1
 
     return 0
 
