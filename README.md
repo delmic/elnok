@@ -30,7 +30,8 @@ python3 -m elnok ....
 ## Usage
 On Linux, you can use the script `elnok` to run it. Note that it's inspired by
 the journalctl command, so you might find familiar behaviour.
-elnok [OPTIONS...] [MATCHES....]
+
+`elnok [OPTIONS...] [MATCHES....]`
 
 ### MATCHES
 By default, it will list all the log. By specifying field matches, you can filter
