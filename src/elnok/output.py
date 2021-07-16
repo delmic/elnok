@@ -30,14 +30,14 @@ TIME_FMT = "%Y-%m-%d %H:%M:%S.%f"
 
 class DefaultFormatter(string.Formatter):
     """
-    String formatter which replaces missing keys by no text
+    String formatter which replaces missing keys by "∅" (empty symbol)
     """
     def get_value(self, key, args, kwargs):
         try:
             return super().get_value(key, args, kwargs)
         except KeyError:
             logging.info("Missing field %s", key)
-            return ""
+            return "∅"
 
 
 def print_hit(hit: dict, fmt: str):
@@ -50,8 +50,7 @@ def print_hit(hit: dict, fmt: str):
         ts = datetime.strptime(source["@timestamp"], "%Y-%m-%dT%H:%M:%S.%fZ")
         source["@timestamp"] = ts.strftime(TIME_FMT)
 
-    # TODO: handle better if a field is missing (than KeyError)
-    # => represent the field as empty (this really happens in logstash, if the field is empty)
+    # If field missing => replace by empty symbol
     formatter = DefaultFormatter()
     try:
         print(formatter.format(fmt, **source))
