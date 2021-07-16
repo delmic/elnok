@@ -54,9 +54,9 @@ def main(args: list) -> int:
     parser.add_argument("--output-fields", dest="fields",
                         help="List of the fields to be printed (comma/semicolon separated)")
     parser.add_argument("--since", "-S", dest="since",
-                        help="Show entries on or newer than the given date. Format is 2012-10-30 18:17:16 or now-2d.")
+                        help="Show entries on or newer than the given date. Format is 2012-10-30T18:17:16 or now-2d.")
     parser.add_argument("--until", "-U", dest="until",
-                        help="Show entries on or before the given date. Format is 2012-10-30 18:17:16 or now-1h.")
+                        help="Show entries on or before the given date. Format is 2012-10-30T18:17:16 or now-1h.")
     parser.add_argument("matches", nargs="*",
                         help="Filter the output to only the fields that match")
 
@@ -130,6 +130,9 @@ def main(args: list) -> int:
 
         for hit in es.search(options.host, options.index, match=matches, since=options.since, until=options.until, fields=fields):
             print_output(hit, fields_fmt)
+    except KeyboardInterrupt:  # Stopped by user
+        logging.debug("Execution interrupted")
+        return 1
     except Exception:
         logging.exception("Failure during execution")
         return 1
