@@ -125,19 +125,21 @@ def search(host: str, target: str, match: Optional[Dict[str, str]]=None,
         req_data["query"] = {
             "bool": {
                 "filter": q_filters
-                # [
-                    # {"match": match},
-                    # {"range": q_range},
-                # ]
             }
         }
 
-        # match = {"level": "WARNING"}
         for field, val in match.items():
             # There are many types of text search "term" is looking for exactly the value
             # There might be better or more flexible options with match, wildcard or regexp...
-            # TODO: not sure why, but "term" and regexp don't match apparently identical strings. wildcard works.
-            q_filters.append({"wildcard": {field: {"value": val}}})
+            # https://www.elastic.co/guide/en/elasticsearch/reference/7.13/query-dsl-wildcard-query.html
+            # q_filters.append({"wildcard": {field: {"value": val}}})
+            # TODO: if the field is repeated, extend the query to work as a OR (ie, separate words with a space)
+            q_filters.append({"match": {field: {"query": val}}})
+            # TODO make the query case sensitive. It should be the matter of selecting
+            # the right analyzer.
+            # https://www.elastic.co/guide/en/elasticsearch/reference/current/specify-analyzer.html
+            # However, for now adding "analyzer": "whitespace" seems to only make
+            # the query text as-is, while the fields are always lowercase...
 
         # Add a time range, if requested. See:
         # https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-range-query.html
@@ -159,12 +161,23 @@ def search(host: str, target: str, match: Optional[Dict[str, str]]=None,
         if hits is not None:
             req_data["search_after"] = hits[-1]["sort"]
 
-        logging.debug(req_data)
+        logging.debug("%s", req_data)
         response = requests.get(url, json=req_data)
         logging.debug(response.text)
 
         # Use OrderedDict in order to keep the order
-        hits = response.json(object_pairs_hook=OrderedDict)["hits"]["hits"]
+        resp_dict = response.json(object_pairs_hook=OrderedDict)
+
+        # In case there was an error parsing the query, it'll return "error" instead of "hits"
+        if not "hits" in resp_dict:
+            logging.error("Search query failed")
+            if "error" in resp_dict:
+                # TODO: make it prettier (it should be some kind of recursive text?
+                for field, value in resp_dict["error"].items():
+                    print("%s: %s" % (field, value))
+            return
+
+        hits = resp_dict["hits"]["hits"]
         if not hits:  # End of the search?
             return
 
