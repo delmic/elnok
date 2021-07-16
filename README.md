@@ -42,51 +42,51 @@ passed. In the case different fields are passed, all the matches will have to ma
 ### OPTIONS
 * -h, --help
 
-    Show a help message and exit
+Show a help message and exit
 
 * --version
 
-    Show program's version number and exit
+Show program's version number and exit
 
-* --log-level <level>
+* --log-level LEVEL
 
-    Set verbosity level (0-3, default = 0) of the elnok internals. 0 only shows errors.
-    A higher number shows more information about the program's behaviour.
-    Everything is logged on the error output. Unless you're debugging an issue
-    with elnok, you probably want to leave it to the minimum.
+Set verbosity level (0-3, default = 0) of the elnok internals. 0 only shows errors.
+A higher number shows more information about the program's behaviour.
+Everything is logged on the error output. Unless you're debugging an issue
+with elnok, you probably want to leave it to the minimum.
 
 * --host HOST
 
-    Specify the name or IP address and port of the Elasticsearch server (default is localhost:9200).
+Specify the name or IP address and port of the Elasticsearch server (default is localhost:9200).
 
 * --index INDEX
 
-    Specify the index pattern to look into (default is logstash-*). It can be comma separated.
+Specify the index pattern to look into (default is logstash-*). It can be comma separated.
 
 * -o, --output OUTPUT
 
-    Controls the format of the generated output. Accepts "short" or "json".
-    The default is "short", which outputs each log on a line, tab/semicolon separated.
-    "json" shows each log line as a raw Elasticsearch hit
+Controls the format of the generated output. Accepts "short" or "json".
+The default is "short", which outputs each log on a line, tab/semicolon separated.
+"json" shows each log line as a raw Elasticsearch hit
 
 * --output-fields FIELDS
 
-    List of the fields to be printed (comma/semicolon separated).
-    On "json" output, by default all the fields are shown. On "short", the default
-    is  "@timestamp,level,module,component,subcomponent:line,message". Commas are
-    replaced by tabs, and semicolons stay as is.
-    The fields available depend on the logstash storage. To find out the available ones,
-    use the json output, with the default behaviour.
+List of the fields to be printed (comma/semicolon separated).
+On "json" output, by default all the fields are shown. On "short", the default
+is  `"@timestamp,level,module,component,subcomponent:line,message"`. Commas are
+replaced by tabs, and semicolons stay as is.
+The fields available depend on the logstash storage. To find out the available ones,
+use the json output, with the default behaviour.
 
 * -S, --since SINCE, -U, --until UNTIL
 
-    Show entries within a limited period. SINCE is used to select the starting date
-    (by default is starts with the oldest log available). UNTIL is used to select
-    the last date shown. The date format follows Elasticsearch's format.
-    It can be either a full date like "2012-10-30 18:17:16", or can be a relative
-    date like "now-2d" or "now-1h". For a full description, see the
-    [Elasticsearch](https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregations-bucket-daterange-aggregation.html)
-    [definitions](https://www.elastic.co/guide/en/elasticsearch/reference/current/common-options.html).
+Show entries within a limited period. SINCE is used to select the starting date
+(by default is starts with the oldest log available). UNTIL is used to select
+the last date shown. The date format follows Elasticsearch's format.
+It can be either a full date like "2012-10-30T18:17:16", or can be a relative
+date like "now-2d" or "now-1h". For a full description, see the
+[Elasticsearch](https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregations-bucket-daterange-aggregation.html)
+[definitions](https://www.elastic.co/guide/en/elasticsearch/reference/current/common-options.html).
 
 
 ### Example
