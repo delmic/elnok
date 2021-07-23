@@ -1,4 +1,4 @@
-__version__ = "1.0"
+__version__ = "1.1-dev"
 __shortname__ = "ELnoK"
 __copyright__ = "Copyright © 2021 Delmic"
 __authors__ = ["Éric Piel"]

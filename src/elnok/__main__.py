@@ -47,6 +47,8 @@ def main(args: list) -> int:
                         help="Specify the name or IP address and port of the elasticsearch server (default is localhost:9200)")
     parser.add_argument("--index", default="logstash-*",
                         help="Specify the index pattern to look into (default is logstash-*). It can be comma separated.")
+    parser.add_argument("--list-fields", dest="list", action='store_true',
+                        help="List all the fields present in the index (tab separated)")
     parser.add_argument("--output", "-o", dest="output", default="short", choices=["short", "json"],
                         help="Controls the format of the generated output.\n "
                         "Default is short, which outputs each log on a line, tab/semicolon separated.\n "
@@ -77,6 +79,11 @@ def main(args: list) -> int:
     logging.basicConfig(level=loglev, format='%(asctime)s (%(module)s) %(levelname)s: %(message)s')
 
     try:
+        if options.list:
+            fields_names = es.list_fields(options.host, options.index)
+            print("\t".join(sorted(fields_names)))
+            return 0
+
         # Convert matches from field=value to a dict field -> value
         matches = {}
         for m in options.matches:
@@ -128,8 +135,18 @@ def main(args: list) -> int:
         else:
             raise ValueError("Unknown output %s" % options.output)
 
+        no_matches = True
         for hit in es.search(options.host, options.index, match=matches, since=options.since, until=options.until, fields=fields):
+            no_matches = False
             print_output(hit, fields_fmt)
+
+        if no_matches and matches:
+            # Something is strange => check if the user selected a field which doesn't exists
+            fields_available = set(es.list_fields(options.host, options.index))
+            wrong_fields = set(matches.keys()) - fields_available
+            if wrong_fields:
+                logging.error("These fields do not exists: %s", ", ".join(sorted(wrong_fields)))
+
     except KeyboardInterrupt:  # Stopped by user
         logging.debug("Execution interrupted")
         return 1

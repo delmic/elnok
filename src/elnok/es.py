@@ -65,6 +65,7 @@ from typing import Optional, Iterator, Dict, List, Set
 # SEARCH_URL =  "http://{host}/{target}/_search?"
 SEARCH_MULTI_URL = "http://{host}/_search"
 PIT_URL = "http://{host}/{target}/_pit"
+MAPPING_URL = "http://{host}/{target}/_mapping"
 
 
 def get_pit(host:str, target: str, keep_alive:float=60) -> dict:
@@ -84,6 +85,8 @@ def search(host: str, target: str, match: Optional[Dict[str, str]]=None,
               ) -> Iterator[dict]:
     """
     Does a elasticsearch query, by returning each hit one at a time via an iterator
+    host: IP address/hostname + port of the elasticsearch server
+    target: the name of the index. Can be a pattern.
     match: a mapping of field -> a filter on what to return. It follows the syntax of 
       ElasticSearch "match" query. See:
       https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl-match-query.html
@@ -185,3 +188,28 @@ def search(host: str, target: str, match: Optional[Dict[str, str]]=None,
         for h in hits:
             yield h
 
+
+def list_fields(host: str, target: str) -> List[str]:
+    """
+    List all the fields stored on the given index/indices
+    host: IP address/hostname + port of the elasticsearch server
+    target: the name of the index. Can be a pattern.
+    """
+    url = MAPPING_URL.format(host=host, target=target)
+
+    # See  https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-get-mapping.html
+    response = requests.get(url)
+    resp_dict = response.json()
+    # Format:
+    # list of str (index names) -> "mappings" -> "properties" -> dict str (field name) -> type
+    fields: Set[str] = set()
+    for idx_name, idx_desc in resp_dict.items():
+        logging.debug("Parsing index %s", idx_name)
+        try:
+            fields_desc = idx_desc["mappings"]["properties"]
+        except KeyError as ex:
+            logging.info("Skipping index %s: %s", idx_name, ex)
+
+        fields.update(fields_desc.keys())
+
+    return list(fields)

@@ -63,6 +63,10 @@ Specify the name or IP address and port of the Elasticsearch server (default is 
 
 Specify the index pattern to look into (default is logstash-*). It can be comma separated.
 
+* --list-fields
+
+List all the fields present in the index (tab separated)
+
 * -o, --output OUTPUT
 
 Controls the format of the generated output. Accepts "short" or "json".
