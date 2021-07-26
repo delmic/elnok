@@ -26,11 +26,13 @@ ELnoK. If not, see http://www.gnu.org/licenses/.
 # -S, --since=, -U, --until=
 
 import argparse
-from elnok import es, output
-import elnok
 import logging
 import re
 import sys
+from typing import Set
+
+from elnok import es, output
+import elnok
 
 DEFAULT_OUTPUT_SHORT = "@timestamp,level,module,component,subcomponent:line,message"
 
@@ -136,20 +138,40 @@ def main(args: list) -> int:
             raise ValueError("Unknown output %s" % options.output)
 
         no_matches = True
+        hit_fields: Set[str] = set()  # all the fields returned by the search
         for hit in es.search(options.host, options.index, match=matches, since=options.since, until=options.until, fields=fields):
             no_matches = False
+            hit_fields.update(hit.get("_source", {}).keys())
             print_output(hit, fields_fmt)
 
+        # If one of the fields to output was *never* returned, it might be that
+        # there is a mistake in the field names to output. As it's easy to check,
+        # we do it and report a error in this case.
+        logging.debug("hit fields = %s, vs %s", hit_fields, fields)
+        if fields:
+            always_empty_fields = fields - hit_fields
+            logging.debug("empty fields = %s", always_empty_fields)
+            if always_empty_fields:
+                fields_available = set(es.list_fields(options.host, options.index))
+                wrong_fields = always_empty_fields - fields_available
+                if wrong_fields:
+                    logging.error("These fields do not exists: %s", ", ".join(sorted(wrong_fields)))
+                    return 1
+
+        # If nothing found, and the user has passed some matches, it could be that
+        # there was a mistake in the field names of the matches. As it's easy to check, we do it and
+        # report an "error" in this case.
         if no_matches and matches:
             # Something is strange => check if the user selected a field which doesn't exists
             fields_available = set(es.list_fields(options.host, options.index))
             wrong_fields = set(matches.keys()) - fields_available
             if wrong_fields:
                 logging.error("These fields do not exists: %s", ", ".join(sorted(wrong_fields)))
+                return 1
 
     except KeyboardInterrupt:  # Stopped by user
         logging.debug("Execution interrupted")
-        return 1
+        return 128
     except Exception:
         logging.exception("Failure during execution")
         return 1
