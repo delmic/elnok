@@ -41,6 +41,11 @@ class DefaultFormatter(string.Formatter):
 
 
 def print_hit(hit: dict, fmt: str):
+    """
+    Displays a hit (= one search result from ES) according to a given format
+    hit: the elastic search response of the hit, as-is. It should contain a _source key.
+    fmt: formatting string, with the fields to replace encoded as "{filed_name}"
+    """
     source = hit["_source"]
 
     # Convert from timestamp -> epoch, and put it back into the user's format

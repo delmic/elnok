@@ -82,7 +82,7 @@ def get_pit(host:str, target: str, keep_alive:float=60) -> dict:
 def search(host: str, target: str, match: Optional[Dict[str, str]]=None,
               since: Optional[str]=None, until: Optional[str]=None,
               fields: Optional[Set[str]]=None
-              ) -> Iterator[dict]:
+              ) -> Iterator[OrderedDict]:
     """
     Does a elasticsearch query, by returning each hit one at a time via an iterator
     host: IP address/hostname + port of the elasticsearch server
@@ -94,7 +94,7 @@ def search(host: str, target: str, match: Optional[Dict[str, str]]=None,
     until: filter for the maximum time. For the format. See:
       https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregations-bucket-daterange-aggregation.html
     fields: restrict the fields to return in the hit
-    yield: dict (str -> value): each result (hit) found, in time ascending order
+    yield: OrderedDict (str -> value): each result (hit) found, in time ascending order
     """
     # TODO: add _source in query, to limit the fields returned
     # We don't receive a single "endless" response. Instead, we start a search,
