@@ -92,6 +92,13 @@ date like "now-2d" or "now-1h". For a full description, see the
 [Elasticsearch](https://www.elastic.co/guide/en/elasticsearch/reference/current/search-aggregations-bucket-daterange-aggregation.html)
 [definitions](https://www.elastic.co/guide/en/elasticsearch/reference/current/common-options.html).
 
+* -u, --username USERNAME
+
+The Elasticsearch username (default is elastic).
+
+* -p, --password PASSWORD
+
+The Elasticsearch password (default is an empty string).
 
 ### Example
 

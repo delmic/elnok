@@ -22,6 +22,7 @@ ELnoK. If not, see http://www.gnu.org/licenses/.
 from collections import OrderedDict
 import logging
 import requests
+from requests.auth import HTTPBasicAuth
 from typing import Optional, Iterator, Dict, List, Set
 
 # Elasticsearch API described here:
@@ -68,18 +69,20 @@ PIT_URL = "http://{host}/{target}/_pit"
 MAPPING_URL = "http://{host}/{target}/_mapping"
 
 
-def get_pit(host:str, target: str, keep_alive:float=60) -> dict:
+def get_pit(host:str, target: str, username: str, password: str, keep_alive:float=60) -> dict:
     """
     keep_alive: how long the PIT should be valid (s)
     """
 
     url = PIT_URL.format(host=host, target=target)
-    response = requests.post(url, params={"keep_alive": "%ds" % keep_alive})
+    # Authentication
+    auth = HTTPBasicAuth(username=username, password=password) if (username and password) else None
+    response = requests.post(url, params={"keep_alive": "%ds" % keep_alive}, auth=auth)
     logging.debug(response.text)
     return response.json()["id"]
 
 
-def search(host: str, target: str, match: Optional[Dict[str, str]]=None,
+def search(host: str, target: str, username: str, password: str, match: Optional[Dict[str, str]]=None,
               since: Optional[str]=None, until: Optional[str]=None,
               fields: Optional[Set[str]]=None
               ) -> Iterator[OrderedDict]:
@@ -103,7 +106,7 @@ def search(host: str, target: str, match: Optional[Dict[str, str]]=None,
 
     # Get a "Point-in-time" (PIT), which is a sort of pointer to a snapshot of
     # the log, so that even if data changes, the paginated results don't change.
-    pit = get_pit(host, target, keep_alive=10)
+    pit = get_pit(host, target, username, password, keep_alive=10)
 
     # Keep requesting small amounts of data
     hits = None
@@ -164,8 +167,11 @@ def search(host: str, target: str, match: Optional[Dict[str, str]]=None,
         if hits is not None:
             req_data["search_after"] = hits[-1]["sort"]
 
+        # Authentication
+        auth = HTTPBasicAuth(username=username, password=password) if (username and password) else None
+
         logging.debug("%s", req_data)
-        response = requests.get(url, json=req_data)
+        response = requests.get(url, json=req_data, auth=auth)
         logging.debug(response.text)
 
         # Use OrderedDict in order to keep the order
@@ -189,16 +195,18 @@ def search(host: str, target: str, match: Optional[Dict[str, str]]=None,
             yield h
 
 
-def list_fields(host: str, target: str) -> List[str]:
+def list_fields(host: str, target: str, username: str, password: str) -> List[str]:
     """
     List all the fields stored on the given index/indices
     host: IP address/hostname + port of the elasticsearch server
     target: the name of the index. Can be a pattern.
     """
     url = MAPPING_URL.format(host=host, target=target)
+    # Authentication
+    auth = HTTPBasicAuth(username=username, password=password) if (username and password) else None
 
     # See  https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-get-mapping.html
-    response = requests.get(url)
+    response = requests.get(url, auth=auth)
     resp_dict = response.json()
     # Format:
     # list of str (index names) -> "mappings" -> "properties" -> dict str (field name) -> type

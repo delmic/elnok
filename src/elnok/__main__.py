@@ -63,6 +63,10 @@ def main(args: list) -> int:
                         help="Show entries on or before the given date. Format is 2012-10-30T18:17:16 or now-1h.")
     parser.add_argument("matches", nargs="*",
                         help="Filter the output to only the fields that match")
+    parser.add_argument("--username", "-u", type=str, default="elastic",
+                        help="The Elasticsearch username (default is elastic).")
+    parser.add_argument("--password", "-p", type=str, default="",
+                        help="The Elasticsearch username's password (default is an empty string).")
 
     options = parser.parse_args(args[1:])
 
@@ -82,7 +86,7 @@ def main(args: list) -> int:
 
     try:
         if options.list:
-            fields_names = es.list_fields(options.host, options.index)
+            fields_names = es.list_fields(options.host, options.index, options.username, options.password)
             print("\t".join(sorted(fields_names)))
             return 0
 
@@ -139,7 +143,7 @@ def main(args: list) -> int:
 
         no_matches = True
         hit_fields: Set[str] = set()  # all the fields returned by the search
-        for hit in es.search(options.host, options.index, match=matches, since=options.since, until=options.until, fields=fields):
+        for hit in es.search(options.host, options.index, options.username, options.password, match=matches, since=options.since, until=options.until, fields=fields):
             no_matches = False
             hit_fields.update(hit.get("_source", {}).keys())
             print_output(hit, fields_fmt)
@@ -152,7 +156,7 @@ def main(args: list) -> int:
             always_empty_fields = fields - hit_fields
             logging.debug("empty fields = %s", always_empty_fields)
             if always_empty_fields:
-                fields_available = set(es.list_fields(options.host, options.index))
+                fields_available = set(es.list_fields(options.host, options.index, options.username, options.password))
                 wrong_fields = always_empty_fields - fields_available
                 if wrong_fields:
                     logging.error("These fields do not exists: %s", ", ".join(sorted(wrong_fields)))
@@ -163,7 +167,7 @@ def main(args: list) -> int:
         # report an "error" in this case.
         if no_matches and matches:
             # Something is strange => check if the user selected a field which doesn't exists
-            fields_available = set(es.list_fields(options.host, options.index))
+            fields_available = set(es.list_fields(options.host, options.index, options.username, options.password))
             wrong_fields = set(matches.keys()) - fields_available
             if wrong_fields:
                 logging.error("These fields do not exists: %s", ", ".join(sorted(wrong_fields)))
