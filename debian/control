@@ -16,6 +16,6 @@ Architecture: any
 # sudo apt satisfy "[Depends]" will run, hence we can specifiy the >= version
 Depends: ${misc:Depends},
           ${python3:Depends},
-          requests (<= 3.0),
+          python3-requests,
 Description: ELnoK
  This package contains the software for a light front-end to Logstash/Elasticsearch.
