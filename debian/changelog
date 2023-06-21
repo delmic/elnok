@@ -1,5 +1,11 @@
+elnok (1.1-2) focal; urgency=medium
+
+  * correct the copyright License statement
+
+ -- Nandish Patel <patel@delmic.com>  Wed, 21 Jun 2023 15:02:26 +0200
+
 elnok (1.1-1) focal; urgency=medium
 
-  * Initial release for vesrion 1.1
+  * Initial release for version 1.1
 
  -- Nandish Patel <patel@delmic.com>  Wed, 21 Jun 2023 14:29:59 +0200
