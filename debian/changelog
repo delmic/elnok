@@ -1,0 +1,23 @@
+elnok (1.1-4) focal; urgency=medium
+
+  * renamed the Package from python3-elnok to elnok
+
+ -- Nandish Patel <patel@delmic.com>  Tue, 27 Jun 2023 09:36:53 +0200
+
+elnok (1.1-3) focal; urgency=medium
+
+  * fix requests dependency in control Depends
+
+ -- Nandish Patel <patel@delmic.com>  Wed, 21 Jun 2023 15:46:26 +0200
+
+elnok (1.1-2) focal; urgency=medium
+
+  * correct the copyright License statement
+
+ -- Nandish Patel <patel@delmic.com>  Wed, 21 Jun 2023 15:02:26 +0200
+
+elnok (1.1-1) focal; urgency=medium
+
+  * Initial release for version 1.1
+
+ -- Nandish Patel <patel@delmic.com>  Wed, 21 Jun 2023 14:29:59 +0200
